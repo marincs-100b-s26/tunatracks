@@ -75,15 +75,17 @@ eez_totals <- zone_fractions |>
   group_by(GEONAME) |>
   summarize(total_length = sum(length)) |>
   arrange(desc(total_length)) |>
-  mutate(GEONAME = fct_inorder(GEONAME)) %>%
-  filter(total_length >= 5e6)
+  mutate(GEONAME = fct_inorder(GEONAME),
+         proportion_length = total_length / sum(total_length)) %>%
+  filter(proportion_length >= 0.05)
 
-ggplot(eez_totals, aes(x = GEONAME, y = total_length, fill = GEONAME)) +
+ggplot(eez_totals, aes(x = GEONAME, y = proportion_length, fill = GEONAME)) +
   geom_col() +
   scale_fill_manual(values = colors, guide = "none") +
+  scale_y_continuous(labels = scales::label_percent()) +
   labs(
-    title = "Total track length by EEZ",
-    x = NULL, y = "Total track length (degrees)"
+    title = "Proportion track lengths by EEZ",
+    x = NULL, y = "Proportion track length (degrees)"
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))

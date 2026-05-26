@@ -1,0 +1,190 @@
+---
+title: "Tracking Atlantic Bluefin Tuna Across EEZ Boundaries — Solutions"
+editor: visual
+---
+
+## Background
+
+### Atlantic Bluefin Tuna
+
+**Atlantic Bluefin Tuna** (*Thunnus thynnus*) are among the largest and fastest fish in the ocean - adults can exceed 3 meters in length and 600 kg, and sustain swimming speeds over 70 km/h. They are highly migratory, crossing the Atlantic Ocean multiple times throughout their lives. Two spawning populations are recognized: one that spawns in the Gulf of Mexico and another in the Mediterranean Sea. Outside the spawning season, individuals roam widely across the North Atlantic in search of prey, making them one of the most wide-ranging fish species known.
+
+Bluefin tuna are also one of the most commercially valuable fish in the world. A single large individual can sell for tens of thousands of dollars at auction. This economic value, combined with their broad geographic range, makes managing bluefin populations exceptionally challenging - and understanding *where* they go is fundamental to any management strategy.
+
+### Electronic Tagging and State-Space Models
+
+To track bluefin tuna movements, scientists attach **electronic tags** that record depth, temperature, and light levels. Light-level data allow researchers to estimate the animal's longitude (from the timing of dawn and dusk) and latitude (from day length). These raw estimates are noisy - errors of hundreds of kilometers are common - so statisticians use a **state-space model (SSM)** to filter the raw observations into a smoothed daily track. The SSM accounts for measurement error and the fact that an animal's true movement must be physically plausible (it cannot teleport). The tracks you will work with today are SSM-estimated daily positions for 19 Atlantic Bluefin Tuna tagged in the North Atlantic.
+
+### Exclusive Economic Zones
+
+Coastal nations claim an **Exclusive Economic Zone (EEZ)** extending 200 nautical miles (≈ 370 km) from their shorelines. Within this zone, the nation has sovereign rights over living and non-living resources, including fisheries. Because bluefin tuna migrate freely across EEZ boundaries, effective conservation requires coordination among many nations. Knowing *how much* of a tuna's migration falls within each country's EEZ is key information for negotiating quotas and assigning management responsibility.
+
+------------------------------------------------------------------------
+
+## Setup
+
+Load `tidyverse`, `terra`, and `tidyterra`. Then read in the three spatial datasets:
+
+-   `data/tracks/tracks.shp` - tuna tracks as lines, one geometry per individual
+-   `data/eez/eez.shp` - EEZ polygons
+-   `data/land/land.shp` - country land polygons for basemap reference
+
+```{r}
+library(tidyverse)
+library(terra)
+library(tidyterra)
+
+tracks <- vect("data/tracks/tracks.shp")
+eez    <- vect("data/eez/eez.shp")
+land   <- vect("data/land/land.shp")
+```
+
+------------------------------------------------------------------------
+
+## Part 1: Map the tracks
+
+### Explore the data
+
+**Q1.** Use `nrow()` on `tracks` to find out how many tuna are in the dataset. Then use `names()` to see what attributes are attached to each track geometry.
+
+```{r}
+nrow(tracks)
+names(tracks)
+```
+
+*Answer:* There are 19 tuna in the dataset. The only attribute is `TOPPID`, the individual tag ID.
+
+**Q2.** What attribute identifies each individual tuna?
+
+*Answer:* `TOPPID`
+
+### Build the map
+
+Create a map showing land, EEZ boundaries, and tuna tracks. You will need:
+
+-   `geom_spatvector()` - plots a `SpatVector` layer; use `fill`, `color`, and `linewidth` aesthetics to style each layer
+-   `coord_sf()` - sets the map extent; use `xlim` and `ylim` to zoom to the data. `ext(tracks)` returns the bounding box of the tracks - you can add a number to it to add a buffer on all sides.
+-   Color each track by `TOPPID` using `aes(color = TOPPID)` inside the `geom_spatvector()` call for `tracks`
+
+```{r}
+bbox <- ext(tracks) + 3
+
+ggplot() +
+  geom_spatvector(data = land, fill = "gray80", color = "gray60", linewidth = 0.3) +
+  geom_spatvector(data = eez, fill = NA, color = "steelblue", linewidth = 0.3) +
+  geom_spatvector(data = tracks, aes(color = TOPPID), linewidth = 0.6) +
+  coord_sf(
+    xlim = c(bbox$xmin, bbox$xmax),
+    ylim = c(bbox$ymin, bbox$ymax),
+    expand = FALSE
+  ) +
+  scale_color_viridis_d(option = "turbo", guide = "none") +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_minimal()
+```
+
+**Q3.** Visually, which parts of the North Atlantic do the tracks concentrate in? Do any tracks appear to stay within a single EEZ, or do most cross boundaries?
+
+*Answer:* The tracks concentrate in the northeastern Atlantic, particularly in the Norwegian Sea and the waters around the British Isles and the Iberian Peninsula. Nearly all tracks cross multiple EEZ boundaries — the tuna move between the Norwegian, British, Irish, and Iberian EEZs over the course of their migrations.
+
+------------------------------------------------------------------------
+
+## Part 2: Time spent in each EEZ
+
+To quantify how much of each migration falls inside each EEZ, we will use `intersect()` to clip the track lines to the EEZ polygons, then measure the length of each clipped segment with `perim()`.
+
+### Clip tracks to EEZs
+
+`intersect()` returns a new `SpatVector` containing only the portions of each track that fall inside an EEZ polygon. The result inherits attributes from both inputs - each row will have a `TOPPID` (from `tracks`) and a `GEONAME` (from `eez`).
+
+After intersecting, use `perim()` to compute the length of each clipped segment. `perim()` takes a `SpatVector` as its argument and returns a vector of lengths - one value per geometry row. Create a new column called `length` with the length of each segment.
+
+```{r}
+tracks_eez <- intersect(tracks, eez)
+
+in_eez <- as_tibble(tracks_eez) |>
+  mutate(length = perim(tracks_eez)) |>
+  select(TOPPID, GEONAME, length)
+```
+
+**Q4.** How many rows does `in_eez` have? What does each row represent?
+
+```{r}
+nrow(in_eez)
+```
+
+*Answer:* Each row represents one continuous segment of a single tuna's track that falls within one EEZ. A tuna that enters and exits the same EEZ multiple times will produce multiple rows for that EEZ.
+
+### Compute fractions
+
+Within each `TOPPID` group, compute `fraction = length / sum(length)` to find the share of EEZ-tracked migration spent in each EEZ.
+
+```{r}
+zone_fractions <- in_eez |>
+  group_by(TOPPID) |>
+  mutate(fraction = length / sum(length)) |>
+  ungroup()
+```
+
+**Q5.** Which tuna visits the most distinct EEZs? Fill in the table below.
+
+```{r}
+in_eez |>
+  group_by(TOPPID) |>
+  summarize(n_eez = n_distinct(GEONAME)) |>
+  arrange(desc(n_eez))
+```
+
+| TOPPID       | EEZs visited |
+|--------------|--------------|
+| *See output* | *See output* |
+
+------------------------------------------------------------------------
+
+## Part 3: Per-EEZ total migration
+
+Now summarize across all tunas: for each EEZ, sum `length` across individuals to get total track length. Sort in descending order and filter out EEZs that represent less than 5% of the total (these are too small to show clearly).
+
+Make a bar chart with EEZ on the x-axis and total track length on the y-axis.
+
+```{r}
+eez_totals <- zone_fractions |>
+  group_by(GEONAME) |>
+  summarize(total_length = sum(length)) |>
+  arrange(desc(total_length)) |>
+  mutate(
+    proportion = total_length / sum(total_length),
+    GEONAME = fct_inorder(GEONAME)
+  ) |>
+  filter(proportion >= 0.05)
+```
+
+```{r}
+ggplot(eez_totals, aes(x = GEONAME, y = total_length, fill = GEONAME)) +
+  geom_col() +
+  scale_fill_viridis_d(guide = "none") +
+  labs(
+    x = NULL, y = "Total track length (m)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+**Q6.** Which EEZ accounts for the most total tuna migration across all individuals? Does this surprise you given the biology described in the Background?
+
+*Answer:* The Norwegian Exclusive Economic Zone accounts for the most total migration across all tunas. This is consistent with the biology — the northeastern Atlantic stock of bluefin tuna is well-documented to use Norwegian and adjacent waters as summer feeding grounds, where cold, productive waters support dense aggregations of forage fish. Norway has long been a key nation in North Atlantic bluefin management for exactly this reason.
+
+**Q7.** Based on these results, which nations should be most involved in Atlantic Bluefin Tuna management? What challenges might arise in getting them to agree on conservation measures?
+
+*Answer:* Norway, the United Kingdom, Ireland, Spain, Portugal, and France are all likely to appear prominently in the results, given the concentration of tracks in the northeastern Atlantic. The key challenge is that these nations have very different economic relationships with bluefin tuna: Norway has historically had a large quota and significant commercial fishing interest, while some other nations have smaller directed fisheries or primarily host tuna in transit. Nations with large EEZ shares may resist quota cuts, while nations bearing the ecological costs of overfishing (e.g., through reduced tourism or bycatch effects) may push for stronger protections. Reaching agreement through ICCAT requires consensus among parties with competing interests, which has historically led to quotas set above scientific recommendations.
+
+------------------------------------------------------------------------
+
+## Submission
+
+You've completed this week's lab. Follow these instructions to submit to Gradescope.
+
+1.  **Render this Quarto document.** Verify that it renders without errors and that your figures appear in the output HTML.
+2.  **Download tunatracks.qmd to your computer.**
+3.  **Navigate to the Gradescope assignment.** There's a link in the Canvas assignment.
+4.  **Click** [**Submit Assignment**]{.underline}**, then drag and drop your Quarto file** (or click to browse for it).

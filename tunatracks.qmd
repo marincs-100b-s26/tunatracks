@@ -11,9 +11,9 @@ editor: visual
 
 Bluefin tuna are also one of the most commercially valuable fish in the world. A single large individual can sell for tens of thousands of dollars at auction. This economic value, combined with their broad geographic range, makes managing bluefin populations exceptionally challenging - and understanding *where* they go is fundamental to any management strategy.
 
-### Electronic Tagging and State-Space Models
+### Electronic Tagging
 
-To track bluefin tuna movements, scientists attach **electronic tags** that record depth, temperature, and light levels. Light-level data allow researchers to estimate the animal's longitude (from the timing of dawn and dusk) and latitude (from day length). These raw estimates are noisy - errors of hundreds of kilometers are common - so statisticians use a **state-space model (SSM)** to filter the raw observations into a smoothed daily track. The SSM accounts for measurement error and the fact that an animal's true movement must be physically plausible (it cannot teleport). The tracks you will work with today are SSM-estimated daily positions for 19 Atlantic Bluefin Tuna tagged in the North Atlantic.
+To track bluefin tuna movements, scientists attach **electronic tags** that record depth, temperature, and light levels. Light-level data allow researchers to estimate the animal's longitude (from the timing of dawn and dusk) and latitude (from day length). These raw estimates are noisy - errors of hundreds of kilometers are common - so scientists use statistical models to filter the raw observations into a smoothed daily track. The model accounts for measurement error and the fact that an animal's true movement must be physically plausible (it cannot teleport). The tracks you will work with today are statistically-estimated daily positions for 19 Atlantic Bluefin Tuna tagged in the North Atlantic.
 
 ### Exclusive Economic Zones
 
@@ -62,9 +62,9 @@ land   <- NULL
 
 Create a map showing land, EEZ boundaries, and tuna tracks. You will need:
 
--   `geom_spatvector()` - plots a `SpatVector` layer; use `fill`, `color`, and `linewidth` aesthetics to style each layer
--   `coord_sf()` - sets the map extent; use `xlim` and `ylim` to zoom to the data. `ext(tracks)` returns the bounding box of the tracks - you can add a number to it to add a buffer on all sides.
--   Color each track by `TOPPID` using `aes(color = TOPPID)` inside the `geom_spatvector()` call for `tracks`
+-   `geom_spatvector()` - plots a `SpatVector` layer; use it for all your data sources (no rasters).
+-   `coord_sf()` - sets the map extent; use `xlim` and `ylim` to zoom to the data.
+-   Color each track by `TOPPID`.
 
 ```{r}
 # Your code here
@@ -101,7 +101,7 @@ in_eez <- NULL   # tibble with columns TOPPID, GEONAME, length
 
 ### Compute fractions
 
-Within each `TOPPID` group, compute `fraction = length / sum(length)` to find the share of EEZ-tracked migration spent in each EEZ.
+Within each `TOPPID` group, compute `fraction` as the fraction of each segment's length relative to the total length in the group. This is the share of EEZ-tracked migration spent in each EEZ.
 
 ```{r}
 # Your code here
@@ -136,10 +136,6 @@ eez_totals <- NULL
 ```
 
 **Q6.** Which EEZ accounts for the most total tuna migration across all individuals?
-
-*Answer:*
-
-**Q7.** Based on these results, which nations should be most involved in Atlantic Bluefin Tuna management?
 
 *Answer:*
 
